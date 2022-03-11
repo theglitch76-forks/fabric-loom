@@ -35,6 +35,9 @@ import java.util.List;
 import java.util.Map;
 
 import com.google.gson.JsonObject;
+
+import net.fabricmc.loom.api.ModMetadataHelperAPI;
+
 import org.gradle.api.Project;
 import org.objectweb.asm.commons.Remapper;
 
@@ -102,13 +105,15 @@ public class ModProcessor {
 		}
 	}
 
-	private void stripNestedJars(File file) {
+	private void stripNestedJars(LoomGradleExtension ext, File file) {
 		// Strip out all contained jar info as we dont want loader to try and load the jars contained in dev.
 		try {
-			ZipUtils.transformJson(JsonObject.class, file.toPath(), Map.of("fabric.mod.json", json -> {
-				json.remove("jars");
-				return json;
-			}));
+			// TODO: cache?
+			Map<String, ZipUtils.UnsafeUnaryOperator<JsonObject>> map = new HashMap<>();
+			for (ModMetadataHelperAPI value : ext.getModMetadataHelpers().get().values()) {
+				map.put(value.getFileName(), value.stripNestedJarsFunction());
+			}
+			ZipUtils.transformJson(JsonObject.class, file.toPath(), map);
 		} catch (IOException e) {
 			throw new UncheckedIOException("Failed to strip nested jars from %s".formatted(file), e);
 		}
@@ -216,7 +221,7 @@ public class ModProcessor {
 				ZipUtils.replace(info.getRemappedOutput().toPath(), info.getAccessWidenerData().path(), accessWidener);
 			}
 
-			stripNestedJars(info.getRemappedOutput());
+			stripNestedJars(extension, info.getRemappedOutput());
 
 			info.finaliseRemapping();
 		}

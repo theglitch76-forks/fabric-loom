@@ -38,6 +38,10 @@ import java.util.stream.Collectors;
 import com.google.common.collect.Iterables;
 import com.google.gson.Gson;
 import com.google.gson.JsonObject;
+
+import net.fabricmc.loom.LoomGradleExtension;
+import net.fabricmc.loom.api.ModMetadataHelperAPI;
+
 import org.apache.commons.io.FilenameUtils;
 import org.gradle.api.InvalidUserDataException;
 import org.gradle.api.Project;
@@ -97,31 +101,28 @@ public class FileDependencyInfo extends DependencyInfo {
 		} else {
 			group = "net.fabricmc.synthetic";
 			File root = classifierToFile.get(""); //We've built the classifierToFile map, now to try find a name and version for our dependency
-			byte[] modJson;
+			ModMetadataHelperAPI.Metadata metadata;
 
-			try {
-				if ("jar".equals(FilenameUtils.getExtension(root.getName())) && (modJson = ZipUtils.unpackNullable(root.toPath(), "fabric.mod.json")) != null) {
-					//It's a Fabric mod, see how much we can extract out
-					JsonObject json = new Gson().fromJson(new String(modJson, StandardCharsets.UTF_8), JsonObject.class);
-
-					if (json == null || !json.has("id") || !json.has("version")) {
-						throw new IllegalArgumentException("Invalid Fabric mod jar: " + root + " (malformed json: " + json + ')');
-					}
-
-					if (json.has("name")) { //Go for the name field if it's got one
-						name = json.get("name").getAsString();
-					} else {
-						name = json.get("id").getAsString();
-					}
-
-					version = json.get("version").getAsString();
-				} else {
-					//Not a Fabric mod, just have to make something up
-					name = FilenameUtils.removeExtension(root.getName());
-					version = "1.0";
+			if ("jar".equals(FilenameUtils.getExtension(root.getName())) && (metadata = LoomGradleExtension.get(project).readMetadataFromJar(root)) != null) {
+				// It has metadata we can parse; try to extract as much as we can out of it
+				String name;
+				name = metadata.getName();
+				if (name == null) {
+					name = metadata.getId();
 				}
-			} catch (IOException e) {
-				throw new UncheckedIOException("Failed to read input file: " + root, e);
+				if (name == null) {
+					throw new IllegalArgumentException("Invalid mod jar: " + root);
+				}
+				this.name = name;
+
+				version = metadata.getVersion();
+				if (version == null) {
+					throw new IllegalArgumentException("Invalid mod jar: " + root);
+				}
+			} else {
+				//Not a Fabric mod, just have to make something up
+				name = FilenameUtils.removeExtension(root.getName());
+				version = "1.0";
 			}
 		}
 	}

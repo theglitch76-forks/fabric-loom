@@ -24,6 +24,10 @@
 
 package net.fabricmc.loom.extension;
 
+import net.fabricmc.loom.api.ModMetadataHelperAPI;
+
+import net.fabricmc.loom.build.FabricModMetadataHelper;
+
 import org.gradle.api.Action;
 import org.gradle.api.NamedDomainObjectContainer;
 import org.gradle.api.Project;
@@ -32,6 +36,7 @@ import org.gradle.api.file.ConfigurableFileCollection;
 import org.gradle.api.file.RegularFileProperty;
 import org.gradle.api.plugins.JavaPluginExtension;
 import org.gradle.api.provider.ListProperty;
+import org.gradle.api.provider.MapProperty;
 import org.gradle.api.provider.Property;
 import org.gradle.api.publish.maven.MavenPublication;
 import org.gradle.api.tasks.SourceSet;
@@ -72,7 +77,7 @@ public abstract class LoomGradleExtensionApiImpl implements LoomGradleExtensionA
 	private final Property<MinecraftJarConfiguration> minecraftJarConfiguration;
 	private final Property<Boolean> splitEnvironmentalSourceSet;
 	private final InterfaceInjectionExtensionAPI interfaceInjectionExtension;
-
+	private final MapProperty<String, ModMetadataHelperAPI> modMetadataHelpers;
 	private final ModVersionParser versionParser;
 
 	private final NamedDomainObjectContainer<RunConfigSettings> runConfigs;
@@ -121,6 +126,10 @@ public abstract class LoomGradleExtensionApiImpl implements LoomGradleExtensionA
 		this.splitEnvironmentalSourceSet = project.getObjects().property(Boolean.class).convention(false);
 		this.splitEnvironmentalSourceSet.finalizeValueOnRead();
 
+		this.modMetadataHelpers = project.getObjects().mapProperty(String.class, ModMetadataHelperAPI.class);
+		this.addModMetadataHelper(new FabricModMetadataHelper());
+		this.modMetadataHelpers.finalizeValueOnRead();
+
 		// Add main source set by default
 		interfaceInjection(interfaceInjection -> {
 			final JavaPluginExtension javaPluginExtension = project.getExtensions().getByType(JavaPluginExtension.class);
@@ -160,6 +169,11 @@ public abstract class LoomGradleExtensionApiImpl implements LoomGradleExtensionA
 	@Override
 	public ListProperty<JarProcessor> getGameJarProcessors() {
 		return jarProcessors;
+	}
+
+	@Override
+	public MapProperty<String, ModMetadataHelperAPI> getModMetadataHelpers() {
+		return modMetadataHelpers;
 	}
 
 	@Override

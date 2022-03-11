@@ -28,6 +28,7 @@ import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.IOException;
+import java.io.InputStreamReader;
 import java.io.Serializable;
 import java.nio.file.Files;
 import java.util.ArrayList;
@@ -41,12 +42,18 @@ import java.util.function.Supplier;
 import java.util.jar.Manifest;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
+import java.util.zip.ZipFile;
 
 import javax.inject.Inject;
 
 import com.google.common.base.Preconditions;
 import com.google.common.base.Suppliers;
 import com.google.gson.JsonObject;
+
+import net.fabricmc.loom.api.LoomGradleExtensionAPI;
+
+import net.fabricmc.loom.api.ModMetadataHelperAPI;
+
 import org.gradle.api.artifacts.Configuration;
 import org.gradle.api.file.ConfigurableFileCollection;
 import org.gradle.api.file.FileCollection;
@@ -59,6 +66,7 @@ import org.gradle.api.tasks.InputFiles;
 import org.gradle.api.tasks.Internal;
 import org.gradle.api.tasks.SourceSet;
 import org.gradle.api.tasks.TaskAction;
+import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -66,7 +74,6 @@ import net.fabricmc.accesswidener.AccessWidenerReader;
 import net.fabricmc.accesswidener.AccessWidenerRemapper;
 import net.fabricmc.accesswidener.AccessWidenerWriter;
 import net.fabricmc.loom.LoomGradleExtension;
-import net.fabricmc.loom.build.MixinRefmapHelper;
 import net.fabricmc.loom.build.nesting.IncludedJarFactory;
 import net.fabricmc.loom.build.nesting.JarNester;
 import net.fabricmc.loom.configuration.accesswidener.AccessWidenerFile;
@@ -138,7 +145,7 @@ public abstract class RemapJarTask extends AbstractRemapJarTask {
 
 			final boolean legacyMixin = extension.getMixin().getUseLegacyMixinAp().get();
 			params.getUseMixinExtension().set(!legacyMixin);
-
+			params.getMetadataHelpers().set(extension.getModMetadataHelpers());
 			if (legacyMixin) {
 				setupLegacyMixinRefmapRemapping(params);
 			}
@@ -159,14 +166,14 @@ public abstract class RemapJarTask extends AbstractRemapJarTask {
 		final LoomGradleExtension extension = LoomGradleExtension.get(getProject());
 		final MixinExtension mixinExtension = extension.getMixin();
 
-		final JsonObject fabricModJson = MixinRefmapHelper.readFabricModJson(getInputFile().getAsFile().get());
+		var helper = extension.readMetadataFromJar(getInputFile().getAsFile().get());
 
-		if (fabricModJson == null) {
-			getProject().getLogger().warn("Could not find fabric.mod.json file in: " + getInputFile().getAsFile().get().getName());
+		if (helper == null) {
+			getProject().getLogger().warn("Could not find a metadata file in: " + getInputFile().getAsFile().get().getName());
 			return;
 		}
 
-		final Collection<String> allMixinConfigs = MixinRefmapHelper.getMixinConfigurationFiles(fabricModJson);
+		final Collection<String> allMixinConfigs = helper.getMixinConfigurationFiles();
 
 		for (SourceSet sourceSet : mixinExtension.getMixinSourceSets()) {
 			MixinExtension.MixinInformationContainer container = Objects.requireNonNull(
@@ -202,6 +209,7 @@ public abstract class RemapJarTask extends AbstractRemapJarTask {
 
 		MapProperty<String, String> getManifestAttributes();
 		ListProperty<String> getClientOnlyClasses();
+		MapProperty<String, ModMetadataHelperAPI> getMetadataHelpers();
 	}
 
 	public abstract static class RemapAction extends AbstractRemapAction<RemapParams> {
@@ -262,7 +270,7 @@ public abstract class RemapJarTask extends AbstractRemapJarTask {
 		}
 
 		private void remapAccessWidener() throws IOException {
-			final AccessWidenerFile accessWidenerFile = AccessWidenerFile.fromModJar(inputFile);
+			final AccessWidenerFile accessWidenerFile = AccessWidenerFile.fromModJar(getParameters().getMetadataHelpers().get(), inputFile);
 
 			if (accessWidenerFile == null) {
 				return;
@@ -298,7 +306,7 @@ public abstract class RemapJarTask extends AbstractRemapJarTask {
 				return;
 			}
 
-			JarNester.nestJars(nestedJars.getFiles(), outputFile.toFile(), LOGGER);
+			JarNester.nestJars(this.getParameters().getMetadataHelpers().get(), nestedJars.getFiles(), outputFile.toFile(), LOGGER);
 		}
 
 		private void modifyJarManifest() throws IOException {

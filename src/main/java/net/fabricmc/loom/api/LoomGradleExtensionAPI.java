@@ -24,12 +24,15 @@
 
 package net.fabricmc.loom.api;
 
+import net.fabricmc.loom.util.ModUtils;
+
 import org.gradle.api.Action;
 import org.gradle.api.NamedDomainObjectContainer;
 import org.gradle.api.artifacts.Dependency;
 import org.gradle.api.file.ConfigurableFileCollection;
 import org.gradle.api.file.RegularFileProperty;
 import org.gradle.api.provider.ListProperty;
+import org.gradle.api.provider.MapProperty;
 import org.gradle.api.provider.Property;
 import org.gradle.api.publish.maven.MavenPublication;
 import org.jetbrains.annotations.ApiStatus;
@@ -42,6 +45,13 @@ import net.fabricmc.loom.configuration.processors.JarProcessor;
 import net.fabricmc.loom.configuration.providers.mappings.NoOpIntermediateMappingsProvider;
 import net.fabricmc.loom.configuration.providers.minecraft.MinecraftJarConfiguration;
 import net.fabricmc.loom.util.DeprecationHelper;
+
+import java.io.File;
+import java.io.IOException;
+import java.io.InputStreamReader;
+import java.nio.file.Path;
+import java.util.List;
+import java.util.zip.ZipFile;
 
 /**
  * This is the public api available exposed to build scripts.
@@ -68,6 +78,17 @@ public interface LoomGradleExtensionAPI {
 		getGameJarProcessors().add(processor);
 	}
 
+	MapProperty<String, ModMetadataHelperAPI> getModMetadataHelpers();
+	default void addModMetadataHelper(ModMetadataHelperAPI api) {
+		getModMetadataHelpers().put(api.getFileName(), api);
+	}
+
+	/**
+	 * @throws UnsupportedOperationException if the jar file has more than one kind of metadata, or the metadata that is found cannot be read.
+	 */
+	default ModMetadataHelperAPI.Metadata readMetadataFromJar(File jar) {
+		return ModUtils.readMetadataFromJar(getModMetadataHelpers().get(), jar);
+	}
 	ConfigurableFileCollection getLog4jConfigs();
 
 	default Dependency officialMojangMappings() {
@@ -118,10 +139,10 @@ public interface LoomGradleExtensionAPI {
 	void disableDeprecatedPomGeneration(MavenPublication publication);
 
 	/**
-	 * Reads the mod version from the fabric.mod.json file located in the main sourcesets resources.
+	 * Reads the mod version from the mod metadata file located in the main sourcesets resources.
 	 * This is useful if you want to set the gradle version based of the version in the fabric.mod.json file.
 	 *
-	 * @return the version defined in the fabric.mod.json
+	 * @return the version defined in the mod metadata
 	 */
 	String getModVersion();
 
